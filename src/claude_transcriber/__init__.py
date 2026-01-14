@@ -355,9 +355,35 @@ def main():
         "-o", "--output",
         help="Output file (prints to stdout if not provided)",
     )
+    parser.add_argument(
+        "-s", "--stream",
+        action="store_true",
+        help="Stream output immediately (for live transcription)",
+    )
 
     args = parser.parse_args()
 
+    # Streaming mode: print immediately as lines come in
+    if args.stream or (not args.file and not args.output):
+        transcriber = Transcriber()
+        first_output = True
+        for line in sys.stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                out = transcriber.transcribe(record)
+                if out:
+                    if not first_output:
+                        print()  # blank line between outputs
+                    print(out, flush=True)
+                    first_output = False
+            except json.JSONDecodeError:
+                pass
+        return
+
+    # Batch mode: collect all then output
     if args.file:
         result = transcribe_file(args.file)
     else:

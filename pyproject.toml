@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "claude-transcriber"
-version = "0.1.0"
+version = "0.2.0"
 description = "Transcribe Claude Code JSONL logs to human-readable text"
 readme = "README.md"
 license = {text = "MIT"}
