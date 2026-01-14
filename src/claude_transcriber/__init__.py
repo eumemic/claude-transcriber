@@ -9,6 +9,8 @@ import json
 import re
 from typing import Any
 
+__all__ = ["Transcriber", "transcribe_file", "main"]
+
 
 class Transcriber:
     """Transcribes Claude Code log records to human-readable format."""
@@ -336,7 +338,8 @@ def transcribe_file(path: str) -> str:
     return "\n\n".join(parts)
 
 
-if __name__ == "__main__":
+def main():
+    """CLI entry point."""
     import argparse
     import sys
 
@@ -380,3 +383,7 @@ if __name__ == "__main__":
         print(f"Wrote to {args.output}")
     else:
         print(result)
+
+
+if __name__ == "__main__":
+    main()

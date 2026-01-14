@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-transcriber"
+version = "0.1.0"
+description = "Transcribe Claude Code JSONL logs to human-readable text"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Tom Yeh", email = "tom@eumemic.com"}
+]
+keywords = ["claude", "anthropic", "transcription", "logs"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+claude-transcriber = "claude_transcriber:main"
+
+[project.urls]
+Homepage = "https://github.com/eumemic/claude-transcriber"
+Repository = "https://github.com/eumemic/claude-transcriber"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

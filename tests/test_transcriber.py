@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from transcriber import Transcriber
+from claude_transcriber import Transcriber
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
