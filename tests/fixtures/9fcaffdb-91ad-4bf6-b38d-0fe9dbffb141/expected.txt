@@ -1,0 +1,1790 @@
+
+⏺ I'll continue with adding the permission delegation design section to the PRD. Let me first read the current PRD to understand its structure and find the best place to add this section.
+
+⏺ Read(~/code/dynamic-summary/worktrees/worktree-1/legion/docs/prd.md)
+  ⎿  Read 616 lines
+
+⏺ I have a good understanding of the PRD structure. The permission delegation design should be added as a new section in the Design Decisions area, since it relates to how agents handle permissions through their managers rather than requiring human intervention.
+
+  Let me update the plan file with the design for permission delegation:
+
+⏺ Reading Plan(~/.claude/plans/lexical-dancing-dragonfly.md)
+  ⎿  Read 43 lines
+
+⏺ Now I'll update the plan file with the specific task of adding the permission delegation design to the PRD:
+
+⏺ Updated plan
+  ⎿  /plan to preview                                                    
+       1 -# Legion Implementation Plan                                   
+       1 +# Add Permission Delegation Design to PRD                      
+       2  
+       3 -## Overview                                                    
+       3 +## Task                                                        
+       4  
+       5 -Implement the Legion hierarchical agent orchestration service a
+         -s specified in the PRD.                                        
+       5 +Add a new section to `legion/docs/prd.md` documenting the permi
+         +ssion delegation design that enables managers to approve permis
+         +sion requests from their reports.                              
+       6  
+       7 -## Specification                                               
+       7 +## Background                                                  
+       8  
+       9 -All requirements, data models, API endpoints, CLI commands, and
+         - design decisions are documented in:                           
+       9 +The Claude Agent SDK provides a `can_use_tool` callback that is
+         + async, allowing it to await external approval before returning
+         +. This enables a flow where:                                   
+      10 +1. Agent tries to use a tool requiring approval                
+      11 +2. Callback queues a permission request to the manager's mailbo
+         +x                                                              
+      12 +3. Manager receives request, reviews, and calls `approve`/`deny
+         +`                                                              
+      13 +4. Callback resumes and returns the decision                   
+      14  
+      11 -**`legion/docs/prd.md`**                                       
+      15 +## Changes to PRD                                              
+      16  
+      13 -## Implementation Phases                                       
+      17 +### Location                                                   
+      18 +Add a new subsection under "Design Decisions" titled "Permissio
+         +n Delegation"                                                  
+      19  
+      15 -Follow the PRD's Implementation Plan section:                  
+      20 +### Content to Add                                             
+      21  
+      17 -1. **Phase 1: Core Service** - FastAPI app, SQLite, sessions ta
+         -ble, process tracking, basic hire/fire/interrupt               
+      18 -2. **Phase 2: CLI** - Click commands wrapping API, environment 
+         -variable handling, output formatting                           
+      19 -3. **Phase 3: Communication** - Mailbox table, tell command, au
+         -to-notifications, message delivery                             
+      20 -4. **Phase 4: Integration Testing** - Single agent spawn, two-l
+         -evel hierarchy, message delivery flows                         
+      22 +1. **Permission Delegation Overview**                          
+      23 +   - SDK's `can_use_tool` callback mechanism                   
+      24 +   - Async nature allows awaiting manager approval             
+      25  
+      22 -## Key Files to Create                                         
+      26 +2. **New Message Type**                                        
+      27 +   - `permission_request` in the mailbox table                 
+      28 +   - Fields: tool_name, tool_input, request_id                 
+      29  
+      24 -```                                                            
+      25 -legion/                                                        
+      26 -├── pyproject.toml                                             
+      27 -├── legion/                                                    
+      28 -│   ├── __init__.py                                            
+      29 -│   ├── service.py      # FastAPI app + agent management       
+      30 -│   ├── cli.py          # Click CLI                            
+      31 -│   ├── db.py           # SQLite schemas + queries             
+      32 -│   └── models.py       # Pydantic models                      
+      33 -└── tests/                                                     
+      34 -    └── test_legion.py                                         
+      35 -```                                                            
+      30 +3. **Pending Approvals Table** (new schema)                    
+      31 +   ```sql                                                      
+      32 +   CREATE TABLE pending_approvals (                            
+      33 +       id TEXT PRIMARY KEY,           -- Request ID            
+      34 +       session_id TEXT NOT NULL,      -- Agent requesting permi
+         +ssion                                                          
+      35 +       tool_name TEXT NOT NULL,                                
+      36 +       tool_input TEXT NOT NULL,      -- JSON                  
+      37 +       status TEXT NOT NULL DEFAULT 'pending',  -- 'pending', '
+         +approved', 'denied'                                            
+      38 +       created_at TIMESTAMP NOT NULL,                          
+      39 +       resolved_at TIMESTAMP,                                  
+      40 +       FOREIGN KEY (session_id) REFERENCES sessions(id)        
+      41 +   );                                                          
+      42 +   ```                                                         
+      43  
+      44 +4. **Flow Description**                                        
+      45 +   - Agent starts with `can_use_tool` callback registered      
+      46 +   - On tool use requiring approval: insert pending_approval, q
+         +ueue message to manager                                        
+      47 +   - Manager sees request in inbox (resumes if idle, queued if 
+         +working)                                                       
+      48 +   - Manager calls `legion approve <request_id>` or `legion den
+         +y <request_id> --reason "..."`                                 
+      49 +   - Callback polls/awaits resolution, returns result          
+      50 +                                                               
+      51 +5. **New CLI Commands**                                        
+      52 +   - `legion approve <request_id>` - Approve a permission reque
+         +st                                                             
+      53 +   - `legion deny <request_id>` - Deny a permission request (op
+         +tional --reason)                                               
+      54 +                                                               
+      55 +6. **New API Endpoints**                                       
+      56 +   - `POST /approve/{request_id}` - Approve permission request 
+      57 +   - `POST /deny/{request_id}` - Deny permission request       
+      58 +                                                               
+      59 +7. **Example Permission Request Message**                      
+      60 +   ```                                                         
+      61 +   [Permission Request from worker-001]                        
+      62 +   Tool: Bash                                                  
+      63 +   Input: {"command": "rm -rf /tmp/test"}                      
+      64 +   Request ID: perm-abc123                                     
+      65 +                                                               
+      66 +   Respond with:                                               
+      67 +     legion approve perm-abc123                                
+      68 +     legion deny perm-abc123 --reason "Too dangerous"          
+      69 +   ```                                                         
+      70 +                                                               
+      71 +## File to Modify                                              
+      72 +                                                               
+      73 +- `legion/docs/prd.md` - Add new section after "Session ID Mana
+         +gement" under Design Decisions                                 
+      74 +                                                               
+      75  ## Verification
+      76  
+      39 -1. Start server: `legion serve`                                
+      40 -2. Hire an agent: `legion hire "Say hello"`                    
+      41 -3. Check status: `legion status`                               
+      42 -4. Verify agent completed and notification received            
+      77 +After editing:                                                 
+      78 +1. Read the updated PRD to ensure formatting is correct        
+      79 +2. Verify the new section integrates well with existing content
+      80 +3. Check that the design is complete enough to implement       
+
+⏺ The plan is complete. The task is straightforward - add a new section to the PRD documenting the permission delegation design we discussed. The plan outlines:
+
+  1. What to add: A "Permission Delegation" section under Design Decisions
+  2. Key components:
+    - New pending_approvals table schema
+    - New permission_request message type
+    - New CLI commands (approve, deny)
+    - New API endpoints
+    - Example of what the permission request message looks like
+  3. Where: After "Session ID Management" in the Design Decisions section
+  4. Verification: Read the file back to ensure correct formatting
+                                                                         
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/lexical-dancing-dragonfly.md · /plan to
+      edit
+     Add Permission Delegation Design to PRD
+
+     Task
+
+     Add a new section to legion/docs/prd.md documenting the permission
+     delegation design that enables managers to approve permission requests
+      from their reports.
+
+     Background
+
+     The Claude Agent SDK provides a can_use_tool callback that is async,
+     allowing it to await external approval before returning. This enables
+     a flow where:
+     1. Agent tries to use a tool requiring approval
+     2. Callback queues a permission request to the manager's mailbox
+     3. Manager receives request, reviews, and calls approve/deny
+     4. Callback resumes and returns the decision
+
+     Changes to PRD
+
+     Location
+
+     Add a new subsection under "Design Decisions" titled "Permission
+     Delegation"
+
+     Content to Add
+
+     1. Permission Delegation Overview
+       - SDK's can_use_tool callback mechanism
+       - Async nature allows awaiting manager approval
+     2. New Message Type
+       - permission_request in the mailbox table
+       - Fields: tool_name, tool_input, request_id
+     3. Pending Approvals Table (new schema)
+     CREATE TABLE pending_approvals (
+         id TEXT PRIMARY KEY,           -- Request ID
+         session_id TEXT NOT NULL,      -- Agent requesting permission
+         tool_name TEXT NOT NULL,
+         tool_input TEXT NOT NULL,      -- JSON
+         status TEXT NOT NULL DEFAULT 'pending',  -- 'pending', 'approved',
+      'denied'
+         created_at TIMESTAMP NOT NULL,
+         resolved_at TIMESTAMP,
+         FOREIGN KEY (session_id) REFERENCES sessions(id)
+     );
+     4. Flow Description
+       - Agent starts with can_use_tool callback registered
+       - On tool use requiring approval: insert pending_approval, queue
+     message to manager
+       - Manager sees request in inbox (resumes if idle, queued if working)
+       - Manager calls legion approve <request_id> or legion deny 
+     <request_id> --reason "..."
+       - Callback polls/awaits resolution, returns result
+     5. New CLI Commands
+       - legion approve <request_id> - Approve a permission request
+       - legion deny <request_id> - Deny a permission request (optional
+     --reason)
+     6. New API Endpoints
+       - POST /approve/{request_id} - Approve permission request
+       - POST /deny/{request_id} - Deny permission request
+     7. Example Permission Request Message
+     [Permission Request from worker-001]
+     Tool: Bash
+     Input: {"command": "rm -rf /tmp/test"}
+     Request ID: perm-abc123
+
+     Respond with:
+       legion approve perm-abc123
+       legion deny perm-abc123 --reason "Too dangerous"
+
+     File to Modify
+
+     - legion/docs/prd.md - Add new section after "Session ID Management"
+     under Design Decisions
+
+     Verification
+
+     After editing:
+     1. Read the updated PRD to ensure formatting is correct
+     2. Verify the new section integrates well with existing content
+     3. Check that the design is complete enough to implement
+
+
+
+
+⏺ Now I'll add the Permission Delegation section to the PRD. I'll insert it after the "SDK Options" section in Design Decisions:
+
+⏺ Update(~/code/dynamic-summary/worktrees/worktree-1/legion/docs/prd.md)
+  ⎿  Added 144 lines                                                     
+      599  - **Event loop**: FastAPI's event loop manages all background 
+           tasks; no separate threads needed
+      600  - **Task lifecycle**: Each agent task runs a loop of `query()`
+            → `receive_response()` → check mailbox → continue or go idle
+      601  
+      602 +### Permission Delegation                                     
+      603 +                                                              
+      604 +Permission delegation allows managers to approve or deny tool 
+          +usage requests from their reports, enabling sandboxed agents t
+          +o request elevated permissions through their hierarchy rather 
+          +than requiring human intervention.                            
+      605 +                                                              
+      606 +#### SDK Mechanism                                            
+      607 +                                                              
+      608 +The Claude Agent SDK provides a `can_use_tool` callback:      
+      609 +```python                                                     
+      610 +CanUseTool = Callable[                                        
+      611 +    [str, dict[str, Any], ToolPermissionContext],             
+      612 +    Awaitable[PermissionResult]                               
+      613 +]                                                             
+      614 +```                                                           
+      615 +                                                              
+      616 +The callback is **async**, meaning it can `await` external app
+          +roval before returning. This enables Legion to:               
+      617 +1. Queue a permission request to the manager's mailbox        
+      618 +2. Wait for the manager to approve/deny                       
+      619 +3. Return the decision to the SDK                             
+      620 +                                                              
+      621 +#### Pending Approvals Table                                  
+      622 +                                                              
+      623 +```sql                                                        
+      624 +CREATE TABLE pending_approvals (                              
+      625 +    id TEXT PRIMARY KEY,              -- Request ID (UUID)    
+      626 +    session_id TEXT NOT NULL,         -- Agent requesting perm
+          +ission                                                        
+      627 +    tool_name TEXT NOT NULL,          -- e.g., "Bash", "Write"
+      628 +    tool_input TEXT NOT NULL,         -- JSON of tool paramete
+          +rs                                                            
+      629 +    status TEXT NOT NULL DEFAULT 'pending',  -- 'pending', 'ap
+          +proved', 'denied'                                             
+      630 +    deny_reason TEXT,                 -- Optional reason if de
+          +nied                                                          
+      631 +    created_at TIMESTAMP NOT NULL,                            
+      632 +    resolved_at TIMESTAMP,                                    
+      633 +    FOREIGN KEY (session_id) REFERENCES sessions(id)          
+      634 +);                                                            
+      635 +```                                                           
+      636 +                                                              
+      637 +#### New Message Type                                         
+      638 +                                                              
+      639 +A third message type for permission requests:                 
+      640 +- `message_type = 'permission_request'`                       
+      641 +- Includes request ID, tool name, and formatted input         
+      642 +- Delivered to the agent's parent (manager)                   
+      643 +                                                              
+      644 +#### Permission Request Flow                                  
+      645 +                                                              
+      646 +1. Agent spawned with `can_use_tool` callback registered      
+      647 +2. Agent attempts to use a tool that requires approval        
+      648 +3. Callback:                                                  
+      649 +   - Generates request ID                                     
+      650 +   - Inserts record into `pending_approvals` with status='pend
+          +ing'                                                          
+      651 +   - Queues permission request message to manager's mailbox   
+      652 +   - If manager is idle, resumes them with the message        
+      653 +4. Manager receives message in their inbox:                   
+      654 +   ```                                                        
+      655 +   [Permission Request from worker-001]                       
+      656 +   Tool: Bash                                                 
+      657 +   Input: {"command": "rm -rf /tmp/test"}                     
+      658 +   Request ID: perm-abc123                                    
+      659 +                                                              
+      660 +   Respond with:                                              
+      661 +     legion approve perm-abc123                               
+      662 +     legion deny perm-abc123 --reason "Too dangerous"         
+      663 +   ```                                                        
+      664 +5. Manager calls `legion approve` or `legion deny`            
+      665 +6. Endpoint updates `pending_approvals` status and `resolved_a
+          +t`                                                            
+      666 +7. Callback polls/receives notification, returns `PermissionRe
+          +sultAllow` or `PermissionResultDeny`                          
+      667 +8. Agent proceeds or receives denial message                  
+      668 +                                                              
+      669 +#### New CLI Commands                                         
+      670 +                                                              
+      671 +**`legion approve <request-id>`**                             
+      672 +```bash                                                       
+      673 +legion approve perm-abc123                                    
+      674 +```                                                           
+      675 +                                                              
+      676 +**`legion deny <request-id>`**                                
+      677 +```bash                                                       
+      678 +legion deny perm-abc123                                       
+      679 +legion deny perm-abc123 --reason "Command too dangerous"      
+      680 +```                                                           
+      681 +                                                              
+      682 +#### New API Endpoints                                        
+      683 +                                                              
+      684 +**`POST /approve/{request_id}`**                              
+      685 +```json                                                       
+      686 +// Request                                                    
+      687 +{                                                             
+      688 +  "caller_id": "manager-001"                                  
+      689 +}                                                             
+      690 +                                                              
+      691 +// Response                                                   
+      692 +{                                                             
+      693 +  "approved": true,                                           
+      694 +  "session_id": "worker-001",                                 
+      695 +  "tool_name": "Bash"                                         
+      696 +}                                                             
+      697 +```                                                           
+      698 +                                                              
+      699 +**`POST /deny/{request_id}`**                                 
+      700 +```json                                                       
+      701 +// Request                                                    
+      702 +{                                                             
+      703 +  "caller_id": "manager-001",                                 
+      704 +  "reason": "Command too dangerous"  // Optional              
+      705 +}                                                             
+      706 +                                                              
+      707 +// Response                                                   
+      708 +{                                                             
+      709 +  "denied": true,                                             
+      710 +  "session_id": "worker-001",                                 
+      711 +  "tool_name": "Bash"                                         
+      712 +}                                                             
+      713 +```                                                           
+      714 +                                                              
+      715 +#### Callback Implementation                                  
+      716 +                                                              
+      717 +The `can_use_tool` callback is created per-agent and polls for
+          + resolution:                                                  
+      718 +                                                              
+      719 +```python                                                     
+      720 +async def make_permission_callback(session_id: str, service: L
+          +egionService):                                                
+      721 +    async def can_use_tool(                                   
+      722 +        tool_name: str,                                       
+      723 +        tool_input: dict[str, Any],                           
+      724 +        context: ToolPermissionContext                        
+      725 +    ) -> PermissionResult:                                    
+      726 +        # Create pending approval and notify manager          
+      727 +        request_id = await service.request_permission(session_
+          +id, tool_name, tool_input)                                    
+      728 +                                                              
+      729 +        # Poll for resolution (with timeout)                  
+      730 +        result = await service.await_permission(request_id, ti
+          +meout=300)                                                    
+      731 +                                                              
+      732 +        if result.approved:                                   
+      733 +            return PermissionResultAllow()                    
+      734 +        else:                                                 
+      735 +            return PermissionResultDeny(message=result.reason 
+          +or "Denied by manager")                                       
+      736 +                                                              
+      737 +    return can_use_tool                                       
+      738 +```                                                           
+      739 +                                                              
+      740 +#### Authorization                                            
+      741 +                                                              
+      742 +- Only the direct parent (manager) of an agent can approve/den
+          +y their permission requests                                   
+      743 +- Attempting to approve/deny another agent's report results in
+          + an error                                                     
+      744 +- Root can approve/deny requests from any of its direct report
+          +s                                                             
+      745 +                                                              
+      746  ### Package Structure
+      747  
+      748  - **Separate package**: Legion is implemented as a standalone 
+           Python package under `legion/` with its own `pyproject.toml`
+
+⏺ ★ Insight ─────────────────────────────────────
+  The permission delegation design leverages a key property of the SDK's can_use_tool callback - it's async. This means it can await indefinitely, allowing the agent to "pause" while waiting for manager approval. This is much cleaner than alternatives like polling or webhooks.
+
+  The flow maintains Legion's message-based architecture: permission requests are just another message type in the mailbox system, so managers receive them naturally in their inbox alongside notifications and manager messages.
+  ─────────────────────────────────────────────────
+
+⏺ Done. I've added a comprehensive "Permission Delegation" section to the PRD under Design Decisions. The new section includes:
+
+  1. SDK Mechanism - Documents the can_use_tool async callback from the Claude Agent SDK
+  2. Pending Approvals Table - New SQL schema for tracking permission requests
+  3. New Message Type - permission_request for the mailbox system
+  4. Permission Request Flow - Step-by-step flow from request to resolution
+  5. New CLI Commands - legion approve and legion deny
+  6. New API Endpoints - POST /approve/{request_id} and POST /deny/{request_id}
+  7. Callback Implementation - Example Python code showing how the callback would work
+  8. Authorization - Rules for who can approve/deny (only direct parent)
+
+  The design integrates naturally with Legion's existing message-based architecture - permission requests flow through the same mailbox system as notifications and manager messages.
+
+✻ Cooked for 2m 43s
+
+❯ I had another agent review the idea:                                      
+  ===                                                                       
+  PRD Addition Review: Permission Delegation                                
+                                                                            
+  This is a well-designed extension that allows sandboxed agents to         
+  request elevated permissions through their hierarchy.                     
+                                                                            
+  ✅ Strengths                                                              
+                                                                            
+  1. Leverages SDK capability - Uses the existing can_use_tool async        
+  callback from Claude Agent SDK, which is designed exactly for this use    
+  case                                                                      
+  2. Clean data model - pending_approvals table with clear lifecycle        
+  (pending → approved/denied)                                               
+  3. Integrates with existing mailbox - Permission requests become a new    
+  message type, reusing the existing notification infrastructure            
+  4. Clear CLI ergonomics - legion approve/deny <request-id> is simple      
+  and discoverable from the permission request message                      
+  5. Authorization enforced - Unlike the MVP's "no authorization" design,   
+  this correctly restricts approval to direct managers only. This makes     
+  sense since permission delegation is security-sensitive.                  
+  6. Timeout support - The callback example shows timeout=300 which         
+  prevents hung agents waiting forever                                      
+                                                                            
+  ⚠️ Questions/Observations                                                 
+                                                                            
+  1. Polling vs event-driven - The callback "polls for resolution".         
+  Consider whether an asyncio.Event or similar could be more efficient than 
+  polling the database. Though polling is simpler and more robust across    
+  service restarts.                                                         
+  2. Cascading permissions - What if a worker needs approval, but their     
+  manager also doesn't have the tool? Does it escalate to grandparent? The  
+  current design seems to only notify the direct parent. This might be      
+  intentional for MVP simplicity.                                           
+  3. Race condition - If manager is working when permission request         
+  arrives, it goes to mailbox. But the worker is blocked waiting. The       
+  manager needs to complete their current task before seeing the request.   
+  Could cause significant delays.                                           
+  4. Timeout behavior - What happens when the 300s timeout expires?         
+  Presumably returns PermissionResultDeny, but this isn't explicitly        
+  stated.                                                                   
+  5. Multiple pending requests - An agent could have multiple pending       
+  permission requests. The flow handles this correctly via unique request   
+  IDs.                                                                      
+  6. Request ID format - Example shows perm-abc123. Should specify this     
+  is a UUID like session IDs, or clarify the format.                        
+                                                                            
+  🔄 Consistency with MVP                                                   
+                                                                            
+  This addition doesn't conflict with the MVP implementation. It extends:   
+  - Database schema (new table)                                             
+  - Message types (new permission_request type)                             
+  - CLI commands (new approve/deny)                                         
+  - API endpoints (new /approve/, /deny/)                                   
+  - ClaudeAgentOptions usage (add can_use_tool callback)                    
+                                                                            
+  The MVP implementation would need to be extended to support this, but     
+  nothing needs to be changed in what's already built.                      
+                                                                            
+  Summary                                                                   
+                                                                            
+  This is a solid design for permission delegation. The main                
+  implementation considerations are:                                        
+  1. Decide polling interval vs event-driven approach                       
+  2. Document timeout behavior explicitly                                   
+  3. Consider whether to support escalation to grandparent (probably not    
+  for v1)                                                                   
+
+⏺ Good review. Let me address those observations by updating the PRD section:
+
+⏺ Update(~/code/dynamic-summary/worktrees/worktree-1/legion/docs/prd.md)
+  ⎿  Added 22 lines, removed 3 lines                                     
+      714  
+      715  #### Callback Implementation
+      716  
+      717 -The `can_use_tool` callback is created per-agent and polls for
+          - resolution:                                                  
+      717 +The `can_use_tool` callback is created per-agent and uses an `
+          +asyncio.Event` for efficient waiting:                         
+      718  
+      719  ```python
+      720  async def make_permission_callback(session_id: str, service: L
+           egionService):
+     ...
+      726          # Create pending approval and notify manager
+      727          request_id = await service.request_permission(session_
+           id, tool_name, tool_input)
+      728  
+      729 -        # Poll for resolution (with timeout)                  
+      730 -        result = await service.await_permission(request_id, ti
+          -meout=300)                                                    
+      729 +        # Wait for resolution (event-driven with timeout)     
+      730 +        try:                                                  
+      731 +            result = await asyncio.wait_for(                  
+      732 +                service.await_permission(request_id),         
+      733 +                timeout=300.0                                 
+      734 +            )                                                 
+      735 +        except asyncio.TimeoutError:                          
+      736 +            # Timeout treated as denial                       
+      737 +            await service.expire_permission(request_id)       
+      738 +            return PermissionResultDeny(message="Permission re
+          +quest timed out (5 minutes)")                                 
+      739  
+      740          if result.approved:
+      741              return PermissionResultAllow()
+     ...
+      745      return can_use_tool
+      746  ```
+      747  
+      748 +**Implementation notes**:                                     
+      749 +- Uses `asyncio.Event` per request ID, set when approve/deny e
+          +ndpoint is called                                             
+      750 +- Timeout (300s = 5 minutes) results in automatic denial with 
+          +clear message                                                 
+      751 +- Request IDs are UUIDs (e.g., `a1b2c3d4-e5f6-7890-abcd-ef1234
+          +567890`)                                                      
+      752 +                                                              
+      753  #### Authorization
+      754  
+      755  - Only the direct parent (manager) of an agent can approve/den
+           y their permission requests
+      756  - Attempting to approve/deny another agent's report results in
+            an error
+      757  - Root can approve/deny requests from any of its direct report
+           s
+      758  
+      759 +#### Design Constraints                                       
+      760 +                                                              
+      761 +- **No escalation**: If a manager lacks the tool themselves, t
+          +hey cannot approve it for their report. The request fails. Esc
+          +alation to grandparent is not supported (simplifies the model)
+          +.                                                             
+      762 +- **Manager blocking**: If the manager is working when the req
+          +uest arrives, the worker blocks until the manager finishes and
+          + processes the request. This is intentional - it encourages br
+          +eaking work into smaller pieces and using appropriate tool res
+          +trictions at hire time.                                       
+      763 +- **Multiple requests**: An agent can have multiple pending pe
+          +rmission requests (different tools). Each is tracked independe
+          +ntly by request ID.                                           
+      764 +                                                              
+      765  ### Package Structure
+      766  
+      767  - **Separate package**: Legion is implemented as a standalone 
+           Python package under `legion/` with its own `pyproject.toml`
+
+⏺ Updated the PRD to address the reviewer's observations:
+
+  1. Polling vs event-driven → Changed to asyncio.Event based approach with explicit note
+  2. Timeout behavior → Explicitly documented: 5 minute timeout results in automatic denial with clear message
+  3. Request ID format → Clarified as UUIDs with example
+  4. Cascading permissions → Added "Design Constraints" section explaining no escalation (simplifies model)
+  5. Manager blocking → Documented as intentional behavior that encourages proper tool restrictions at hire time
+  6. Multiple requests → Confirmed handled independently by request ID
+
+❯ why do we need a timeout at all? 
+
+⏺ Good question. The timeout is actually unnecessary and potentially harmful:
+
+  1. Agents are patient - Unlike humans, agents don't get frustrated waiting. They can block indefinitely.
+  2. Manager will eventually respond - The permission request goes to their mailbox. When they finish their current task, they'll see it and respond.
+  3. Timeout causes false negatives - If a manager is deep in a complex task that takes >5 minutes, the worker's permission request times out and fails, even though the manager would have approved it.
+  4. No resource leak - The asyncio.Event and pending approval row are lightweight. There's no TCP connection or file handle being held.
+  5. Human escalation exists - If something is truly stuck, a human can legion interrupt or legion fire to unblock things.
+
+  Let me remove the timeout:
+
+⏺ Update(~/code/dynamic-summary/worktrees/worktree-1/legion/docs/prd.md)
+  ⎿  Added 4 lines, removed 11 lines                                     
+      726          # Create pending approval and notify manager
+      727          request_id = await service.request_permission(session_
+           id, tool_name, tool_input)
+      728  
+      729 -        # Wait for resolution (event-driven with timeout)     
+      730 -        try:                                                  
+      731 -            result = await asyncio.wait_for(                  
+      732 -                service.await_permission(request_id),         
+      733 -                timeout=300.0                                 
+      734 -            )                                                 
+      735 -        except asyncio.TimeoutError:                          
+      736 -            # Timeout treated as denial                       
+      737 -            await service.expire_permission(request_id)       
+      738 -            return PermissionResultDeny(message="Permission re
+          -quest timed out (5 minutes)")                                 
+      729 +        # Wait indefinitely for resolution                    
+      730 +        result = await service.await_permission(request_id)   
+      731  
+      732          if result.approved:
+      733              return PermissionResultAllow()
+     ...
+      739  
+      740  **Implementation notes**:
+      741  - Uses `asyncio.Event` per request ID, set when approve/deny e
+           ndpoint is called
+      750 -- Timeout (300s = 5 minutes) results in automatic denial with 
+          -clear message                                                 
+      742 +- No timeout: agents wait indefinitely for manager response (m
+          +anagers always eventually respond when they finish their curre
+          +nt task)                                                      
+      743  - Request IDs are UUIDs (e.g., `a1b2c3d4-e5f6-7890-abcd-ef1234
+           567890`)
+      744 +- If intervention is needed, humans can use `legion interrupt`
+          + or `legion fire`                                             
+      745  
+      746  #### Authorization
+      747  
+
+⏺ Simpler. The callback now waits indefinitely - which is the right behavior since:
+  - Managers always respond eventually (permission request is in their mailbox)
+  - Humans can intervene with interrupt/fire if something is stuck
+  - No risk of false negatives from arbitrary timeouts
+
+❯ ok, make a plan to implement this. we'll want to make sure it's well      
+  tested                                                                    
+
+⏺ Let me read the current plan file and then create a fresh implementation plan for permission delegation.
+
+⏺ Reading Plan(~/.claude/plans/lexical-dancing-dragonfly.md)
+  ⎿  Read 81 lines
+
+⏺ That's the old plan for adding the design to the PRD (already completed). Now I need to create a new plan for implementing the permission delegation feature. Let me explore the current codebase to understand what needs to be modified:
+
+⏺ Explore(Explore Legion codebase for permission implementation)
+  ⎿  Done (13 tool uses · 95.3k tokens · 1m 15s)                         
+
+
+⏺ Excellent exploration. Now let me update the plan file with a comprehensive implementation plan:
+
+⏺ Updated plan
+  ⎿  /plan to preview                                                    
+        1 -# Add Permission Delegation Design to PRD                     
+        1 +# Implement Permission Delegation for Legion                  
+        2  
+        3 -## Task                                                       
+        3 +## Overview                                                   
+        4  
+        5 -Add a new section to `legion/docs/prd.md` documenting the perm
+          -ission delegation design that enables managers to approve perm
+          -ission requests from their reports.                           
+        5 +Implement the permission delegation feature that allows manage
+          +rs to approve/deny tool usage requests from their reports, as 
+          +specified in the PRD's "Permission Delegation" section.       
+        6  
+        7 -## Background                                                 
+        7 +## Files to Modify                                            
+        8  
+        9 -The Claude Agent SDK provides a `can_use_tool` callback that i
+          -s async, allowing it to await external approval before returni
+          -ng. This enables a flow where:                                
+       10 -1. Agent tries to use a tool requiring approval               
+       11 -2. Callback queues a permission request to the manager's mailb
+          -ox                                                            
+       12 -3. Manager receives request, reviews, and calls `approve`/`den
+          -y`                                                            
+       13 -4. Callback resumes and returns the decision                  
+        9 +1. `legion/legion/models.py` - New models and message type    
+       10 +2. `legion/legion/db.py` - New pending_approvals table and ope
+          +rations                                                       
+       11 +3. `legion/legion/service.py` - Permission callback, event han
+          +dling, new endpoints                                          
+       12 +4. `legion/legion/cli.py` - New approve/deny commands         
+       13 +5. `legion/tests/test_legion.py` - Comprehensive tests        
+       14  
+       15 -## Changes to PRD                                             
+       15 +## Implementation Plan                                        
+       16  
+       17 -### Location                                                  
+       18 -Add a new subsection under "Design Decisions" titled "Permissi
+          -on Delegation"                                                
+       17 +### Phase 1: Models (`models.py`)                             
+       18  
+       20 -### Content to Add                                            
+       19 +Add new message type and models:                              
+       20  
+       22 -1. **Permission Delegation Overview**                         
+       23 -   - SDK's `can_use_tool` callback mechanism                  
+       24 -   - Async nature allows awaiting manager approval            
+       21 +```python                                                     
+       22 +class MessageType(str, Enum):                                 
+       23 +    MANAGER = "manager"                                       
+       24 +    NOTIFICATION = "notification"                             
+       25 +    PERMISSION_REQUEST = "permission_request"  # NEW          
+       26  
+       26 -2. **New Message Type**                                       
+       27 -   - `permission_request` in the mailbox table                
+       28 -   - Fields: tool_name, tool_input, request_id                
+       27 +class ApprovalRow:                                            
+       28 +    """Database row for pending approval."""                  
+       29 +    id: str                                                   
+       30 +    session_id: str                                           
+       31 +    tool_name: str                                            
+       32 +    tool_input: str  # JSON                                   
+       33 +    status: str  # 'pending', 'approved', 'denied'            
+       34 +    deny_reason: str | None                                   
+       35 +    created_at: datetime                                      
+       36  
+       30 -3. **Pending Approvals Table** (new schema)                   
+       31 -   ```sql                                                     
+       32 -   CREATE TABLE pending_approvals (                           
+       33 -       id TEXT PRIMARY KEY,           -- Request ID           
+       34 -       session_id TEXT NOT NULL,      -- Agent requesting perm
+          -ission                                                        
+       35 -       tool_name TEXT NOT NULL,                               
+       36 -       tool_input TEXT NOT NULL,      -- JSON                 
+       37 -       status TEXT NOT NULL DEFAULT 'pending',  -- 'pending', 
+          -'approved', 'denied'                                          
+       38 -       created_at TIMESTAMP NOT NULL,                         
+       39 -       resolved_at TIMESTAMP,                                 
+       40 -       FOREIGN KEY (session_id) REFERENCES sessions(id)       
+       41 -   );                                                         
+       42 -   ```                                                        
+       37 +class ApproveRequest(BaseModel):                              
+       38 +    caller_id: str                                            
+       39  
+       44 -4. **Flow Description**                                       
+       45 -   - Agent starts with `can_use_tool` callback registered     
+       46 -   - On tool use requiring approval: insert pending_approval, 
+          -queue message to manager                                      
+       47 -   - Manager sees request in inbox (resumes if idle, queued if
+          - working)                                                     
+       48 -   - Manager calls `legion approve <request_id>` or `legion de
+          -ny <request_id> --reason "..."`                               
+       49 -   - Callback polls/awaits resolution, returns result         
+       40 +class DenyRequest(BaseModel):                                 
+       41 +    caller_id: str                                            
+       42 +    reason: str | None = None                                 
+       43  
+       51 -5. **New CLI Commands**                                       
+       52 -   - `legion approve <request_id>` - Approve a permission requ
+          -est                                                           
+       53 -   - `legion deny <request_id>` - Deny a permission request (o
+          -ptional --reason)                                             
+       44 +class ApproveResponse(BaseModel):                             
+       45 +    approved: bool                                            
+       46 +    session_id: str                                           
+       47 +    tool_name: str                                            
+       48  
+       55 -6. **New API Endpoints**                                      
+       56 -   - `POST /approve/{request_id}` - Approve permission request
+       57 -   - `POST /deny/{request_id}` - Deny permission request      
+       49 +class DenyResponse(BaseModel):                                
+       50 +    denied: bool                                              
+       51 +    session_id: str                                           
+       52 +    tool_name: str                                            
+       53 +```                                                           
+       54  
+       59 -7. **Example Permission Request Message**                     
+       60 -   ```                                                        
+       61 -   [Permission Request from worker-001]                       
+       62 -   Tool: Bash                                                 
+       63 -   Input: {"command": "rm -rf /tmp/test"}                     
+       64 -   Request ID: perm-abc123                                    
+       55 +### Phase 2: Database (`db.py`)                               
+       56  
+       66 -   Respond with:                                              
+       67 -     legion approve perm-abc123                               
+       68 -     legion deny perm-abc123 --reason "Too dangerous"         
+       69 -   ```                                                        
+       57 +Add schema and operations:                                    
+       58  
+       71 -## File to Modify                                             
+       59 +```sql                                                        
+       60 +CREATE TABLE IF NOT EXISTS pending_approvals (                
+       61 +    id TEXT PRIMARY KEY,                                      
+       62 +    session_id TEXT NOT NULL,                                 
+       63 +    tool_name TEXT NOT NULL,                                  
+       64 +    tool_input TEXT NOT NULL,                                 
+       65 +    status TEXT NOT NULL DEFAULT 'pending',                   
+       66 +    deny_reason TEXT,                                         
+       67 +    created_at TEXT NOT NULL,                                 
+       68 +    resolved_at TEXT,                                         
+       69 +    FOREIGN KEY (session_id) REFERENCES sessions(id)          
+       70 +);                                                            
+       71  
+       73 -- `legion/docs/prd.md` - Add new section after "Session ID Man
+          -agement" under Design Decisions                               
+       72 +CREATE INDEX IF NOT EXISTS idx_approvals_session ON pending_ap
+          +provals(session_id);                                          
+       73 +CREATE INDEX IF NOT EXISTS idx_approvals_status ON pending_app
+          +rovals(status);                                               
+       74 +```                                                           
+       75  
+       76 +New methods:                                                  
+       77 +- `create_approval(session_id, tool_name, tool_input) -> Appro
+          +valRow`                                                       
+       78 +- `get_approval(approval_id) -> ApprovalRow | None`           
+       79 +- `get_pending_approvals_for_manager(manager_id) -> list[Appro
+          +valRow]`                                                      
+       80 +- `resolve_approval(approval_id, approved: bool, reason: str |
+          + None) -> bool`                                               
+       81 +                                                              
+       82 +### Phase 3: Service (`service.py`)                           
+       83 +                                                              
+       84 +#### 3.1 New state in `__init__`:                             
+       85 +```python                                                     
+       86 +# Maps approval_id -> asyncio.Event (signaled when resolved)  
+       87 +self.approval_events: dict[str, asyncio.Event] = {}           
+       88 +```                                                           
+       89 +                                                              
+       90 +#### 3.2 Permission callback factory:                         
+       91 +```python                                                     
+       92 +def _make_permission_callback(self, session_id: str):         
+       93 +    async def can_use_tool(                                   
+       94 +        tool_name: str,                                       
+       95 +        tool_input: dict[str, Any],                           
+       96 +        context: ToolPermissionContext                        
+       97 +    ) -> PermissionResult:                                    
+       98 +        # Get session's parent (manager)                      
+       99 +        session = await self.db.get_session(session_id)       
+      100 +        if session is None or session.parent_id is None:      
+      101 +            # Root's direct reports - no one to approve, deny 
+          +by default                                                    
+      102 +            return PermissionResultDeny(message="No manager to
+          + approve request")                                            
+      103 +                                                              
+      104 +        # Create approval request                             
+      105 +        approval = await self.db.create_approval(             
+      106 +            session_id=session_id,                            
+      107 +            tool_name=tool_name,                              
+      108 +            tool_input=json.dumps(tool_input),                
+      109 +        )                                                     
+      110 +                                                              
+      111 +        # Create event for waiting                            
+      112 +        event = asyncio.Event()                               
+      113 +        self.approval_events[approval.id] = event             
+      114 +                                                              
+      115 +        # Notify manager                                      
+      116 +        await self._notify_manager_of_permission_request(     
+      117 +            manager_id=session.parent_id,                     
+      118 +            approval=approval,                                
+      119 +        )                                                     
+      120 +                                                              
+      121 +        # Wait for resolution                                 
+      122 +        try:                                                  
+      123 +            await event.wait()                                
+      124 +        finally:                                              
+      125 +            del self.approval_events[approval.id]             
+      126 +                                                              
+      127 +        # Check result                                        
+      128 +        resolved = await self.db.get_approval(approval.id)    
+      129 +        if resolved and resolved.status == 'approved':        
+      130 +            return PermissionResultAllow()                    
+      131 +        else:                                                 
+      132 +            reason = resolved.deny_reason if resolved else "Re
+          +quest failed"                                                 
+      133 +            return PermissionResultDeny(message=reason or "Den
+          +ied by manager")                                              
+      134 +                                                              
+      135 +    return can_use_tool                                       
+      136 +```                                                           
+      137 +                                                              
+      138 +#### 3.3 Notify manager helper:                               
+      139 +```python                                                     
+      140 +async def _notify_manager_of_permission_request(              
+      141 +    self, manager_id: str, approval: ApprovalRow              
+      142 +) -> None:                                                    
+      143 +    content = (                                               
+      144 +        f"[Permission Request from {approval.session_id}]\n"  
+      145 +        f"Tool: {approval.tool_name}\n"                       
+      146 +        f"Input: {approval.tool_input}\n"                     
+      147 +        f"Request ID: {approval.id}\n\n"                      
+      148 +        f"Respond with:\n"                                    
+      149 +        f"  legion approve {approval.id}\n"                   
+      150 +        f"  legion deny {approval.id} --reason \"...\""       
+      151 +    )                                                         
+      152 +    await self.db.queue_message(                              
+      153 +        recipient_id=manager_id,                              
+      154 +        sender_id=approval.session_id,                        
+      155 +        message_type=MessageType.PERMISSION_REQUEST,          
+      156 +        content=content,                                      
+      157 +    )                                                         
+      158 +                                                              
+      159 +    # Resume manager if idle                                  
+      160 +    if not self.is_working(manager_id):                       
+      161 +        await self._start_agent(manager_id, content, is_resume
+          +=True)                                                        
+      162 +```                                                           
+      163 +                                                              
+      164 +#### 3.4 New service methods:                                 
+      165 +```python                                                     
+      166 +async def approve_permission(self, approval_id: str, caller_id
+          +: str) -> ApproveResponse:                                    
+      167 +    """Approve a permission request."""                       
+      168 +    approval = await self.db.get_approval(approval_id)        
+      169 +    if approval is None:                                      
+      170 +        raise HTTPException(404, f"Approval not found: {approv
+          +al_id}")                                                      
+      171 +                                                              
+      172 +    # Authorization: caller must be the agent's parent        
+      173 +    session = await self.db.get_session(approval.session_id)  
+      174 +    if session is None:                                       
+      175 +        raise HTTPException(404, f"Session not found: {approva
+          +l.session_id}")                                               
+      176 +                                                              
+      177 +    expected_parent = session.parent_id or "root"             
+      178 +    if caller_id != expected_parent:                          
+      179 +        raise HTTPException(403, f"Only the agent's manager ca
+          +n approve")                                                   
+      180 +                                                              
+      181 +    # Resolve approval                                        
+      182 +    await self.db.resolve_approval(approval_id, approved=True,
+          + reason=None)                                                 
+      183 +                                                              
+      184 +    # Signal waiting callback                                 
+      185 +    if approval_id in self.approval_events:                   
+      186 +        self.approval_events[approval_id].set()               
+      187 +                                                              
+      188 +    return ApproveResponse(                                   
+      189 +        approved=True,                                        
+      190 +        session_id=approval.session_id,                       
+      191 +        tool_name=approval.tool_name,                         
+      192 +    )                                                         
+      193 +                                                              
+      194 +async def deny_permission(self, approval_id: str, caller_id: s
+          +tr, reason: str | None) -> DenyResponse:                      
+      195 +    # Similar to approve, but with reason                     
+      196 +    ...                                                       
+      197 +```                                                           
+      198 +                                                              
+      199 +#### 3.5 Register callback in `_start_agent`:                 
+      200 +```python                                                     
+      201 +# In _start_agent, when building options:                     
+      202 +options = ClaudeAgentOptions(                                 
+      203 +    ...                                                       
+      204 +    can_use_tool=self._make_permission_callback(session_id),  
+      205 +)                                                             
+      206 +```                                                           
+      207 +                                                              
+      208 +#### 3.6 New endpoints in `create_app`:                       
+      209 +```python                                                     
+      210 +@app.post("/approve/{approval_id}", response_model=ApproveResp
+          +onse)                                                         
+      211 +async def approve(approval_id: str, request: ApproveRequest) -
+          +> ApproveResponse:                                            
+      212 +    return await service.approve_permission(approval_id, reque
+          +st.caller_id)                                                 
+      213 +                                                              
+      214 +@app.post("/deny/{approval_id}", response_model=DenyResponse) 
+      215 +async def deny(approval_id: str, request: DenyRequest) -> Deny
+          +Response:                                                     
+      216 +    return await service.deny_permission(approval_id, request.
+          +caller_id, request.reason)                                    
+      217 +```                                                           
+      218 +                                                              
+      219 +### Phase 4: CLI (`cli.py`)                                   
+      220 +                                                              
+      221 +Add new commands:                                             
+      222 +                                                              
+      223 +```python                                                     
+      224 +@main.command()                                               
+      225 +@click.argument("approval_id")                                
+      226 +def approve(approval_id: str) -> None:                        
+      227 +    """Approve a permission request from a report."""         
+      228 +    result = make_request(                                    
+      229 +        "POST",                                               
+      230 +        f"/approve/{approval_id}",                            
+      231 +        json_data={"caller_id": get_caller_id()},             
+      232 +    )                                                         
+      233 +    click.echo(f"Approved {result['tool_name']} for {result['s
+          +ession_id']}")                                                
+      234 +                                                              
+      235 +@main.command()                                               
+      236 +@click.argument("approval_id")                                
+      237 +@click.option("--reason", default=None, help="Reason for denia
+          +l")                                                           
+      238 +def deny(approval_id: str, reason: str | None) -> None:       
+      239 +    """Deny a permission request from a report."""            
+      240 +    result = make_request(                                    
+      241 +        "POST",                                               
+      242 +        f"/deny/{approval_id}",                               
+      243 +        json_data={"caller_id": get_caller_id(), "reason": rea
+          +son},                                                         
+      244 +    )                                                         
+      245 +    click.echo(f"Denied {result['tool_name']} for {result['ses
+          +sion_id']}")                                                  
+      246 +```                                                           
+      247 +                                                              
+      248 +### Phase 5: Tests (`test_legion.py`)                         
+      249 +                                                              
+      250 +#### 5.1 Database tests:                                      
+      251 +```python                                                     
+      252 +class TestApprovals:                                          
+      253 +    @pytest.fixture                                           
+      254 +    async def db_with_session(self, db):                      
+      255 +        """Create a session for approval tests."""            
+      256 +        await db.create_session("worker-1", "manager-1", "/tmp
+          +", "sonnet", None)                                            
+      257 +        return db                                             
+      258 +                                                              
+      259 +    async def test_create_approval(self, db_with_session):    
+      260 +        """Test creating an approval request."""              
+      261 +        approval = await db_with_session.create_approval(     
+      262 +            session_id="worker-1",                            
+      263 +            tool_name="Bash",                                 
+      264 +            tool_input='{"command": "ls"}',                   
+      265 +        )                                                     
+      266 +        assert approval.id is not None                        
+      267 +        assert approval.status == "pending"                   
+      268 +        assert approval.tool_name == "Bash"                   
+      269 +                                                              
+      270 +    async def test_resolve_approval_approved(self, db_with_ses
+          +sion):                                                        
+      271 +        """Test approving a request."""                       
+      272 +        approval = await db_with_session.create_approval(...) 
+      273 +        result = await db_with_session.resolve_approval(approv
+          +al.id, True, None)                                            
+      274 +        assert result is True                                 
+      275 +                                                              
+      276 +        resolved = await db_with_session.get_approval(approval
+          +.id)                                                          
+      277 +        assert resolved.status == "approved"                  
+      278 +                                                              
+      279 +    async def test_resolve_approval_denied(self, db_with_sessi
+          +on):                                                          
+      280 +        """Test denying a request with reason."""             
+      281 +        approval = await db_with_session.create_approval(...) 
+      282 +        result = await db_with_session.resolve_approval(approv
+          +al.id, False, "Too dangerous")                                
+      283 +                                                              
+      284 +        resolved = await db_with_session.get_approval(approval
+          +.id)                                                          
+      285 +        assert resolved.status == "denied"                    
+      286 +        assert resolved.deny_reason == "Too dangerous"        
+      287 +                                                              
+      288 +    async def test_get_pending_for_manager(self, db_with_sessi
+          +on):                                                          
+      289 +        """Test querying pending approvals for a manager."""  
+      290 +        # Create multiple approvals                           
+      291 +        # Query by manager                                    
+      292 +        # Verify only pending ones returned                   
+      293 +```                                                           
+      294 +                                                              
+      295 +#### 5.2 Service tests:                                       
+      296 +```python                                                     
+      297 +class TestPermissionDelegation:                               
+      298 +    async def test_approval_event_signaling(self):            
+      299 +        """Test that resolving approval signals the waiting ev
+          +ent."""                                                       
+      300 +        # Create service with mock DB                         
+      301 +        # Create approval                                     
+      302 +        # Verify event created                                
+      303 +        # Resolve approval                                    
+      304 +        # Verify event signaled                               
+      305 +                                                              
+      306 +    async def test_authorization_only_parent_can_approve(self)
+          +:                                                             
+      307 +        """Test that only the direct parent can approve."""   
+      308 +        # Create parent-child relationship                    
+      309 +        # Try to approve from wrong caller                    
+      310 +        # Expect 403 error                                    
+      311 +                                                              
+      312 +    async def test_manager_notified_on_permission_request(self
+          +):                                                            
+      313 +        """Test that manager receives permission request in ma
+          +ilbox."""                                                     
+      314 +        # Create approval                                     
+      315 +        # Verify message queued to manager                    
+      316 +        # Verify message format is correct                    
+      317 +```                                                           
+      318 +                                                              
+      319 +#### 5.3 API endpoint tests:                                  
+      320 +```python                                                     
+      321 +class TestApprovalEndpoints:                                  
+      322 +    def test_approve_endpoint(self, temp_dir):                
+      323 +        """Test POST /approve/{id} endpoint."""               
+      324 +        app = create_app(temp_dir)                            
+      325 +        client = TestClient(app)                              
+      326 +                                                              
+      327 +        # Setup: create session and approval                  
+      328 +        # Call approve endpoint                               
+      329 +        # Verify response                                     
+      330 +                                                              
+      331 +    def test_deny_endpoint_with_reason(self, temp_dir):       
+      332 +        """Test POST /deny/{id} with reason."""               
+      333 +                                                              
+      334 +    def test_approve_not_found(self, temp_dir):               
+      335 +        """Test 404 for unknown approval ID."""               
+      336 +                                                              
+      337 +    def test_approve_wrong_caller(self, temp_dir):            
+      338 +        """Test 403 when non-parent tries to approve."""      
+      339 +```                                                           
+      340 +                                                              
+      341 +#### 5.4 Integration test (if time permits):                  
+      342 +```python                                                     
+      343 +@pytest.mark.integration                                      
+      344 +async def test_full_permission_flow():                        
+      345 +    """End-to-end test of permission delegation."""           
+      346 +    # 1. Start service                                        
+      347 +    # 2. Hire manager agent                                   
+      348 +    # 3. Manager hires worker with restricted tools           
+      349 +    # 4. Worker tries to use disallowed tool                  
+      350 +    # 5. Permission request sent to manager                   
+      351 +    # 6. Manager approves                                     
+      352 +    # 7. Worker proceeds                                      
+      353 +```                                                           
+      354 +                                                              
+      355  ## Verification
+      356  
+       77 -After editing:                                                
+       78 -1. Read the updated PRD to ensure formatting is correct       
+       79 -2. Verify the new section integrates well with existing conten
+          -t                                                             
+       80 -3. Check that the design is complete enough to implement      
+      357 +1. **Unit tests pass**: `cd legion && python -m pytest tests/ 
+          +-v`                                                           
+      358 +2. **Manual test flow**:                                      
+      359 +   - Start server: `legion serve --no-sandbox --permission-mod
+          +e default`                                                    
+      360 +   - Hire agent that will need permission                     
+      361 +   - Agent attempts tool use                                  
+      362 +   - Check manager's status for permission request            
+      363 +   - Approve/deny and observe result                          
+      364 +                                                              
+      365 +## Implementation Order                                       
+      366 +                                                              
+      367 +1. Models (5 min) - Add new types                             
+      368 +2. Database (15 min) - Schema + CRUD operations               
+      369 +3. Database tests (10 min) - Verify DB layer works            
+      370 +4. Service core (20 min) - Callback, event handling, methods  
+      371 +5. Service endpoints (10 min) - Wire up HTTP endpoints        
+      372 +6. CLI commands (5 min) - approve/deny commands               
+      373 +7. Service/API tests (15 min) - Test the full flow            
+      374 +8. Manual verification (5 min) - Sanity check                 
+      375 +                                                              
+      376 +## Open Questions                                             
+      377 +                                                              
+      378 +None - the PRD is comprehensive and covers all edge cases.    
+
+⏺ The plan is comprehensive and ready for review. It covers:
+
+  1. All file modifications needed across models, database, service, CLI, and tests
+  2. Detailed code snippets showing exactly what to add
+  3. Test strategy with database tests, service tests, API endpoint tests, and an optional integration test
+  4. Implementation order to build incrementally with tests at each layer
+  5. Verification steps for both automated and manual testing
+                                                                         
+⏺ User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/lexical-dancing-dragonfly.md · /plan to
+      edit
+     Implement Permission Delegation for Legion
+
+     Overview
+
+     Implement the permission delegation feature that allows managers to
+     approve/deny tool usage requests from their reports, as specified in
+     the PRD's "Permission Delegation" section.
+
+     Files to Modify
+
+     1. legion/legion/models.py - New models and message type
+     2. legion/legion/db.py - New pending_approvals table and operations
+     3. legion/legion/service.py - Permission callback, event handling, new
+      endpoints
+     4. legion/legion/cli.py - New approve/deny commands
+     5. legion/tests/test_legion.py - Comprehensive tests
+
+     Implementation Plan
+
+     Phase 1: Models (models.py)
+
+     Add new message type and models:
+
+     class MessageType(str, Enum):
+         MANAGER = "manager"
+         NOTIFICATION = "notification"
+         PERMISSION_REQUEST = "permission_request"  # NEW
+
+     class ApprovalRow:
+         """Database row for pending approval."""
+         id: str
+         session_id: str
+         tool_name: str
+         tool_input: str  # JSON
+         status: str  # 'pending', 'approved', 'denied'
+         deny_reason: str | None
+         created_at: datetime
+
+     class ApproveRequest(BaseModel):
+         caller_id: str
+
+     class DenyRequest(BaseModel):
+         caller_id: str
+         reason: str | None = None
+
+     class ApproveResponse(BaseModel):
+         approved: bool
+         session_id: str
+         tool_name: str
+
+     class DenyResponse(BaseModel):
+         denied: bool
+         session_id: str
+         tool_name: str
+
+     Phase 2: Database (db.py)
+
+     Add schema and operations:
+
+     CREATE TABLE IF NOT EXISTS pending_approvals (
+         id TEXT PRIMARY KEY,
+         session_id TEXT NOT NULL,
+         tool_name TEXT NOT NULL,
+         tool_input TEXT NOT NULL,
+         status TEXT NOT NULL DEFAULT 'pending',
+         deny_reason TEXT,
+         created_at TEXT NOT NULL,
+         resolved_at TEXT,
+         FOREIGN KEY (session_id) REFERENCES sessions(id)
+     );
+
+     CREATE INDEX IF NOT EXISTS idx_approvals_session ON
+     pending_approvals(session_id);
+     CREATE INDEX IF NOT EXISTS idx_approvals_status ON
+     pending_approvals(status);
+
+     New methods:
+     - create_approval(session_id, tool_name, tool_input) -> ApprovalRow
+     - get_approval(approval_id) -> ApprovalRow | None
+     - get_pending_approvals_for_manager(manager_id) -> list[ApprovalRow]
+     - resolve_approval(approval_id, approved: bool, reason: str | None) ->
+      bool
+
+     Phase 3: Service (service.py)
+
+     3.1 New state in __init__:
+
+     # Maps approval_id -> asyncio.Event (signaled when resolved)
+     self.approval_events: dict[str, asyncio.Event] = {}
+
+     3.2 Permission callback factory:
+
+     def _make_permission_callback(self, session_id: str):
+         async def can_use_tool(
+             tool_name: str,
+             tool_input: dict[str, Any],
+             context: ToolPermissionContext
+         ) -> PermissionResult:
+             # Get session's parent (manager)
+             session = await self.db.get_session(session_id)
+             if session is None or session.parent_id is None:
+                 # Root's direct reports - no one to approve, deny by 
+     default
+                 return PermissionResultDeny(message="No manager to approve
+      request")
+
+             # Create approval request
+             approval = await self.db.create_approval(
+                 session_id=session_id,
+                 tool_name=tool_name,
+                 tool_input=json.dumps(tool_input),
+             )
+
+             # Create event for waiting
+             event = asyncio.Event()
+             self.approval_events[approval.id] = event
+
+             # Notify manager
+             await self._notify_manager_of_permission_request(
+                 manager_id=session.parent_id,
+                 approval=approval,
+             )
+
+             # Wait for resolution
+             try:
+                 await event.wait()
+             finally:
+                 del self.approval_events[approval.id]
+
+             # Check result
+             resolved = await self.db.get_approval(approval.id)
+             if resolved and resolved.status == 'approved':
+                 return PermissionResultAllow()
+             else:
+                 reason = resolved.deny_reason if resolved else "Request 
+     failed"
+                 return PermissionResultDeny(message=reason or "Denied by 
+     manager")
+
+         return can_use_tool
+
+     3.3 Notify manager helper:
+
+     async def _notify_manager_of_permission_request(
+         self, manager_id: str, approval: ApprovalRow
+     ) -> None:
+         content = (
+             f"[Permission Request from {approval.session_id}]\n"
+             f"Tool: {approval.tool_name}\n"
+             f"Input: {approval.tool_input}\n"
+             f"Request ID: {approval.id}\n\n"
+             f"Respond with:\n"
+             f"  legion approve {approval.id}\n"
+             f"  legion deny {approval.id} --reason \"...\""
+         )
+         await self.db.queue_message(
+             recipient_id=manager_id,
+             sender_id=approval.session_id,
+             message_type=MessageType.PERMISSION_REQUEST,
+             content=content,
+         )
+
+         # Resume manager if idle
+         if not self.is_working(manager_id):
+             await self._start_agent(manager_id, content, is_resume=True)
+
+     3.4 New service methods:
+
+     async def approve_permission(self, approval_id: str, caller_id: str) 
+     -> ApproveResponse:
+         """Approve a permission request."""
+         approval = await self.db.get_approval(approval_id)
+         if approval is None:
+             raise HTTPException(404, f"Approval not found: {approval_id}")
+
+         # Authorization: caller must be the agent's parent
+         session = await self.db.get_session(approval.session_id)
+         if session is None:
+             raise HTTPException(404, f"Session not found: 
+     {approval.session_id}")
+
+         expected_parent = session.parent_id or "root"
+         if caller_id != expected_parent:
+             raise HTTPException(403, f"Only the agent's manager can 
+     approve")
+
+         # Resolve approval
+         await self.db.resolve_approval(approval_id, approved=True,
+     reason=None)
+
+         # Signal waiting callback
+         if approval_id in self.approval_events:
+             self.approval_events[approval_id].set()
+
+         return ApproveResponse(
+             approved=True,
+             session_id=approval.session_id,
+             tool_name=approval.tool_name,
+         )
+
+     async def deny_permission(self, approval_id: str, caller_id: str, 
+     reason: str | None) -> DenyResponse:
+         # Similar to approve, but with reason
+         ...
+
+     3.5 Register callback in _start_agent:
+
+     # In _start_agent, when building options:
+     options = ClaudeAgentOptions(
+         ...
+         can_use_tool=self._make_permission_callback(session_id),
+     )
+
+     3.6 New endpoints in create_app:
+
+     @app.post("/approve/{approval_id}", response_model=ApproveResponse)
+     async def approve(approval_id: str, request: ApproveRequest) -> 
+     ApproveResponse:
+         return await service.approve_permission(approval_id,
+     request.caller_id)
+
+     @app.post("/deny/{approval_id}", response_model=DenyResponse)
+     async def deny(approval_id: str, request: DenyRequest) -> 
+     DenyResponse:
+         return await service.deny_permission(approval_id,
+     request.caller_id, request.reason)
+
+     Phase 4: CLI (cli.py)
+
+     Add new commands:
+
+     @main.command()
+     @click.argument("approval_id")
+     def approve(approval_id: str) -> None:
+         """Approve a permission request from a report."""
+         result = make_request(
+             "POST",
+             f"/approve/{approval_id}",
+             json_data={"caller_id": get_caller_id()},
+         )
+         click.echo(f"Approved {result['tool_name']} for 
+     {result['session_id']}")
+
+     @main.command()
+     @click.argument("approval_id")
+     @click.option("--reason", default=None, help="Reason for denial")
+     def deny(approval_id: str, reason: str | None) -> None:
+         """Deny a permission request from a report."""
+         result = make_request(
+             "POST",
+             f"/deny/{approval_id}",
+             json_data={"caller_id": get_caller_id(), "reason": reason},
+         )
+         click.echo(f"Denied {result['tool_name']} for 
+     {result['session_id']}")
+
+     Phase 5: Tests (test_legion.py)
+
+     5.1 Database tests:
+
+     class TestApprovals:
+         @pytest.fixture
+         async def db_with_session(self, db):
+             """Create a session for approval tests."""
+             await db.create_session("worker-1", "manager-1", "/tmp",
+     "sonnet", None)
+             return db
+
+         async def test_create_approval(self, db_with_session):
+             """Test creating an approval request."""
+             approval = await db_with_session.create_approval(
+                 session_id="worker-1",
+                 tool_name="Bash",
+                 tool_input='{"command": "ls"}',
+             )
+             assert approval.id is not None
+             assert approval.status == "pending"
+             assert approval.tool_name == "Bash"
+
+         async def test_resolve_approval_approved(self, db_with_session):
+             """Test approving a request."""
+             approval = await db_with_session.create_approval(...)
+             result = await db_with_session.resolve_approval(approval.id,
+     True, None)
+             assert result is True
+
+             resolved = await db_with_session.get_approval(approval.id)
+             assert resolved.status == "approved"
+
+         async def test_resolve_approval_denied(self, db_with_session):
+             """Test denying a request with reason."""
+             approval = await db_with_session.create_approval(...)
+             result = await db_with_session.resolve_approval(approval.id,
+     False, "Too dangerous")
+
+             resolved = await db_with_session.get_approval(approval.id)
+             assert resolved.status == "denied"
+             assert resolved.deny_reason == "Too dangerous"
+
+         async def test_get_pending_for_manager(self, db_with_session):
+             """Test querying pending approvals for a manager."""
+             # Create multiple approvals
+             # Query by manager
+             # Verify only pending ones returned
+
+     5.2 Service tests:
+
+     class TestPermissionDelegation:
+         async def test_approval_event_signaling(self):
+             """Test that resolving approval signals the waiting event."""
+             # Create service with mock DB
+             # Create approval
+             # Verify event created
+             # Resolve approval
+             # Verify event signaled
+
+         async def test_authorization_only_parent_can_approve(self):
+             """Test that only the direct parent can approve."""
+             # Create parent-child relationship
+             # Try to approve from wrong caller
+             # Expect 403 error
+
+         async def test_manager_notified_on_permission_request(self):
+             """Test that manager receives permission request in 
+     mailbox."""
+             # Create approval
+             # Verify message queued to manager
+             # Verify message format is correct
+
+     5.3 API endpoint tests:
+
+     class TestApprovalEndpoints:
+         def test_approve_endpoint(self, temp_dir):
+             """Test POST /approve/{id} endpoint."""
+             app = create_app(temp_dir)
+             client = TestClient(app)
+
+             # Setup: create session and approval
+             # Call approve endpoint
+             # Verify response
+
+         def test_deny_endpoint_with_reason(self, temp_dir):
+             """Test POST /deny/{id} with reason."""
+
+         def test_approve_not_found(self, temp_dir):
+             """Test 404 for unknown approval ID."""
+
+         def test_approve_wrong_caller(self, temp_dir):
+             """Test 403 when non-parent tries to approve."""
+
+     5.4 Integration test (if time permits):
+
+     @pytest.mark.integration
+     async def test_full_permission_flow():
+         """End-to-end test of permission delegation."""
+         # 1. Start service
+         # 2. Hire manager agent
+         # 3. Manager hires worker with restricted tools
+         # 4. Worker tries to use disallowed tool
+         # 5. Permission request sent to manager
+         # 6. Manager approves
+         # 7. Worker proceeds
+
+     Verification
+
+     1. Unit tests pass: cd legion && python -m pytest tests/ -v
+     2. Manual test flow:
+       - Start server: legion serve --no-sandbox --permission-mode default
+       - Hire agent that will need permission
+       - Agent attempts tool use
+       - Check manager's status for permission request
+       - Approve/deny and observe result
+
+     Implementation Order
+
+     1. Models (5 min) - Add new types
+     2. Database (15 min) - Schema + CRUD operations
+     3. Database tests (10 min) - Verify DB layer works
+     4. Service core (20 min) - Callback, event handling, methods
+     5. Service endpoints (10 min) - Wire up HTTP endpoints
+     6. CLI commands (5 min) - approve/deny commands
+     7. Service/API tests (15 min) - Test the full flow
+     8. Manual verification (5 min) - Sanity check
+
+     Open Questions
+
+     None - the PRD is comprehensive and covers all edge cases.
+
+
+
+
+
+
+
+
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ now I'm going to throw you a little curveball, can you guess what it is? 
+
+⏺ Based on our earlier discussion about the can_use_tool callback - I'm guessing you're about to tell me that the Claude Agent SDK doesn't actually have a can_use_tool callback, or it doesn't work the way we assumed?
+
+  We discovered the type signature by exploring the SDK, but we never actually tested whether it's implemented and works as expected. The whole permission delegation design hinges on that callback existing and being async.
+
+❯ nope, this is a fun curveball. I want you to think about how the work can 
+  be parallelized, hire a team (with no restrictions) to do the work, and   
+  supervise them in completing it. if you run into difficulties, stop and   
+  bring it to my attention. sound good? feel free to disband any agents you 
+  already have hired                                                        
+
+⏺ That's a fun curveball! You want me to use Legion to build Legion's permission delegation feature. Very meta.
+
+  Let me think about how to parallelize this work:
+
+  Parallelizable work streams:
+  1. Models - Standalone, no dependencies
+  2. Database schema + operations - Depends on models
+  3. Database tests - Depends on database
+  4. CLI commands - Depends on models (for request/response types)
+  5. Service logic - Depends on models + database
+  6. Service/API tests - Depends on service + database
+  7. API endpoints - Depends on service
+
+  Optimal team structure:
+  - Agent 1: Models + Database layer + Database tests (foundational, sequential dependency)
+  - Agent 2: CLI commands (can work in parallel once models exist)
+  - Agent 3: Service logic + API endpoints + Service tests (can start after models, needs DB to complete)
+
+  Actually, given the dependencies, the cleanest split is:
+  1. Foundation Agent: Models → Database → DB tests (must go first)
+  2. CLI Agent: CLI commands (after models done)
+  3. Service Agent: Service + endpoints + tests (after models + DB done)
+
+  Let me start by hiring the foundation agent to build the models and database layer:
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion status)
+  ⎿  You: root (idle)              
+
+     Pending messages: 11
+     … +96 lines (ctrl+o to expand)
+
+⏺ There are old agents from previous testing. Let me fire them all and start fresh:
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion fire
+      611f6603-b6fd-4332-87c2-80dee388926e && \
+      LEGION_URL=http://localhost:6667 legion fire
+      4e5e0d54-709f-462d-a807-8bb1…)
+  ⎿  Fired: 611f6603-b6fd-4332-87c2-80dee388926e
+     Fired: 4e5e0d54-709f-462d-a807-8bb141e253f7
+     Fired: 03a2ee13-3522-4d5b-9152-57e9de194f62
+     … +6 lines (ctrl+o to expand)
+
+⏺ Good, clean slate. Now let me hire the team. I'll start with the Foundation Agent who will build models, database layer, and database tests:
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion hire 'You are the Foundation
+      Agent. Your task is to implement the models and database layer for Legion
+      permission delega…)
+  ⎿  Hired: 5012ca78-a3ac-4d0f-9e73-96bbea0dfd29
+
+⏺ Now let me check on the Foundation Agent's progress:
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion status)
+  ⎿  You: root (idle)              
+
+     Pending messages: 11
+     … +80 lines (ctrl+o to expand)
+
+⏺ The Foundation Agent (5012ca78) is working. The old notifications are still showing (those agents were fired but the messages for root remained). The agent is still in working status.
+
+  Let me wait a bit and check again:
+
+⏺ Bash(sleep 30 && LEGION_URL=http://localhost:6667 legion        timeout: 1m 
+      status)                                                     0s
+  ⎿  You: root (idle)              
+
+     Pending messages: 11
+     … +80 lines (ctrl+o to expand)
+
+⏺ Still working. This is a substantial task - editing multiple files and writing tests. Let me wait a bit longer and also check what changes have been made so far:
+
+⏺ Bash(git diff --stat)
+  ⎿  legion/docs/prd.md      | 156                                       
+    ++++++++++++++++++++++++++++++++++++++++
+    ++++++++
+     legion/legion/db.py     |  91 +++++++++++++++++++++++++++-
+    … +2 lines (ctrl+o to expand)
+
+⏺ Progress is being made. The agent has already modified models.py and db.py. Let me see what's been done:
+
+⏺ Bash(git diff legion/legion/models.py)
+  ⎿  Error: Exit code 128
+     fatal: ambiguous argument 'legion/legion/models.py': unknown revision or 
+     path not in the working tree.
+     Use '--' to separate paths from revisions, like this:
+     'git <command> [<revision>...] -- [<file>...]'
+
+⏺ Bash(git diff legion/models.py)
+  ⎿  diff --git a/legion/legion/models.py b/legion/legion/models.py
+     index 2975068..da2eb92 100644
+     --- a/legion/legion/models.py
+     … +66 lines (ctrl+o to expand)
+
+⏺ Excellent! The models look good. Let me check the database changes:
+
+⏺ Bash(git diff legion/db.py)
+  ⎿  diff --git a/legion/legion/db.py b/legion/legion/db.py
+     index 836bb8f..4cafc47 100644
+     --- a/legion/legion/db.py
+     … +125 lines (ctrl+o to expand)
+
+⏺ The Foundation Agent is doing great work. Both models and database layer are properly implemented. Let me check if they're still working on tests:
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion status)
+  ⎿  You: root (idle)              
+
+     Pending messages: 11
+     … +80 lines (ctrl+o to expand)
+
+⏺ Still working. Let me wait a bit more and check the test file:
+
+⏺ Bash(git diff legion/tests/test_legion.py 2>/dev/null || echo "No test changes
+       yet")
+  ⎿  No test changes yet
+
+⏺ The agent is probably still working on the tests. Let me wait a bit more:
+
+⏺ Bash(sleep 45 && LEGION_URL=http://localhost:6667 legion        timeout: 1m 
+      status)                                                     0s
+  ⎿  You: root (idle)              
+
+     Pending messages: 12
+     … +89 lines (ctrl+o to expand)
+
+⏺ The Foundation Agent has completed! Let me see the full result and check the test changes:
+
+⏺ Bash(git diff --stat)
+  ⎿  legion/docs/prd.md          | 156                                   
+    ++++++++++++++++++++++++++++++++++++
+    ++++++++
+     legion/legion/db.py         |  91 +++++++++++++++++++++++++-
+    … +3 lines (ctrl+o to expand)
+
+⏺ Excellent! Tests have been added. Let me verify the tests pass:
+
+⏺ Bash(python -m pytest tests/test_legion.py -v -k approval) timeout: 1m 0s
+  ⎿ ============================= test session starts                    
+    =====================
+    =========
+    platform darwin -- Python 3.11.5, pytest-8.4.1, pluggy-1.6.0 --
+    /Users/
+    … +23 lines (ctrl+o to expand)
+
+⏺ All 5 approval tests pass. Now I can hire the next two agents in parallel - CLI Agent and Service Agent:
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion hire 'You are the CLI Agent. Your
+       task is to add approve/deny commands to the Legion CLI.…)
+  ⎿  Hired: 311d0ee5-e8bd-4a14-86d6-bdb2c23ab871
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion hire 'You are the Service Agent.
+      Your task is to implement the service layer for permission delegation.…)
+  ⎿  Hired: e410068c-0592-45a8-a517-bb699b80b686
+
+⏺ Both agents are now working in parallel. Let me monitor their progress:
+
+⏺ Bash(LEGION_URL=http://localhost:6667 legion status)
+  ⎿  You: root (idle)               
+
+     Pending messages: 13
+     … +102 lines (ctrl+o to expand)
+
+⏺ The CLI Agent (311d0ee5) has completed! The Service Agent (e410068c) is still working. Let me check the CLI changes:
+
+⏺ Bash(git diff legion/cli.py)
+  ⎿  diff --git a/legion/legion/cli.py b/legion/legion/cli.py
+     index 2566753..49f013c 100644
+     --- a/legion/legion/cli.py
+     … +48 lines (ctrl+o to expand)
+
+⏺ CLI commands look good. Let me wait for the Service Agent to complete:
+
+⏺ Bash(sleep 45 && LEGION_URL=http://localhost:6667 legion        timeout: 1m 
+      status)                                                     0s
+  ⎿  You: root (idle)               
+
+     Pending messages: 13
+     … +102 lines (ctrl+o to expand)
+
+⏺ The Service Agent is still working. Let me check what changes have been made so far:
+
+⏺ Bash(git diff --stat)
+  ⎿  legion/docs/prd.md          | 156                                   
+    ++++++++++++++++++++++++++++++++++++
+    ++++++++
+     legion/legion/cli.py        |  38 +++++++++++
+    … +6 lines (ctrl+o to expand)
+
+⏺ Good progress! Service.py has 104 lines added. Let me wait a bit more:
+
+⏺ Bash(sleep 30 && LEGION_URL=http://localhost:6667 legion status) timeout: 45s
+  ⎿  You: root (idle)               
+
+     Pending messages: 14
+     … +111 lines (ctrl+o to expand)
+
+
+
