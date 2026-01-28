@@ -206,64 +206,14 @@ class Transcriber:
 
     def _format_tool_args(self, name: str, input_data: dict[str, Any]) -> str:
         """Format tool input as abbreviated args string."""
-        if name == "Bash":
-            cmd = input_data.get("command", "")
-            if isinstance(cmd, str):
-                # Truncate long commands, show first line
-                lines = cmd.split("\n")
-                first_line = lines[0]
-                if len(lines) > 1:
-                    return first_line[:50] + "…"
-                if len(first_line) > 60:
-                    return first_line[:57] + "…"
-                return first_line
+        if not input_data:
+            return ""
 
-        elif name == "Read":
-            path = input_data.get("file_path", "")
-            return path
-
-        elif name == "Write":
-            path = input_data.get("file_path", "")
-            return path
-
-        elif name == "Edit":
-            path = input_data.get("file_path", "")
-            return path
-
-        elif name == "Grep":
-            pattern = input_data.get("pattern", "")
-            path = input_data.get("path", "")
-            if path:
-                return f'pattern: "{pattern}", path: "{path}"'
-            return f'pattern: "{pattern}"'
-
-        elif name == "Glob":
-            pattern = input_data.get("pattern", "")
-            return pattern
-
-        elif name == "Task":
-            desc = input_data.get("description", "")
-            return desc
-
-        elif name == "WebSearch":
-            query = input_data.get("query", "")
-            return query[:50] + "…" if len(query) > 50 else query
-
-        elif name == "WebFetch":
-            url = input_data.get("url", "")
-            return url[:50] + "…" if len(url) > 50 else url
-
-        elif name == "TodoWrite":
-            return ""  # No useful summary
-
-        else:
-            # Generic: try common keys
-            for key in ("query", "url", "path", "file_path", "pattern", "description"):
-                val = input_data.get(key, "")
-                if isinstance(val, str) and val:
-                    return val[:50] + "…" if len(val) > 50 else val
-
-        return ""
+        serialized = json.dumps(input_data, default=str)
+        max_len = 200
+        if len(serialized) > max_len:
+            return serialized[:max_len] + "…"
+        return serialized
 
     def _format_tool_result(self, block: dict[str, Any]) -> str:
         """Format a tool result block."""
@@ -294,7 +244,7 @@ class Transcriber:
                     result_lines.append(f"  ⎿ {line}")
                 else:
                     result_lines.append(f"    {line}")
-            result_lines.append(f"    … +{remaining} lines (ctrl+o to expand)")
+            result_lines.append(f"    … +{remaining} lines")
             return "\n".join(result_lines)
         else:
             result_lines = []
