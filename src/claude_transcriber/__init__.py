@@ -253,27 +253,21 @@ class Transcriber:
         # Format with indentation
         lines = content.split("\n")
 
-        # Truncate if too many lines
         max_lines = 5
+        max_line_len = 500
+        truncated_lines = lines[:max_lines]
+
+        result_lines = []
+        for i, line in enumerate(truncated_lines):
+            if len(line) > max_line_len:
+                line = line[:max_line_len] + "…"
+            prefix = "  ⎿ " if i == 0 else "    "
+            result_lines.append(prefix + line)
+
         if len(lines) > max_lines:
-            shown_lines = lines[:max_lines]
-            remaining = len(lines) - max_lines
-            result_lines = []
-            for i, line in enumerate(shown_lines):
-                if i == 0:
-                    result_lines.append(f"  ⎿ {line}")
-                else:
-                    result_lines.append(f"    {line}")
-            result_lines.append(f"    … +{remaining} lines")
-            return "\n".join(result_lines)
-        else:
-            result_lines = []
-            for i, line in enumerate(lines):
-                if i == 0:
-                    result_lines.append(f"  ⎿ {line}")
-                else:
-                    result_lines.append(f"    {line}")
-            return "\n".join(result_lines)
+            result_lines.append(f"    … +{len(lines) - max_lines} lines")
+
+        return "\n".join(result_lines)
 
     def _indent_text(self, text: str, first_prefix: str, cont_prefix: str) -> str:
         """Indent text with given prefixes."""
