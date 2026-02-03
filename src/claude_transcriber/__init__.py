@@ -15,8 +15,9 @@ __all__ = ["Transcriber", "transcribe_file", "main"]
 class Transcriber:
     """Transcribes Claude Code log records to human-readable format."""
 
-    def __init__(self):
+    def __init__(self, timestamps: bool = False):
         self._pending_tool_use: dict | None = None
+        self._timestamps = timestamps
 
     def transcribe(self, record: dict[str, Any]) -> str | None:
         """Transcribe a single record.
@@ -34,11 +35,18 @@ class Transcriber:
             return None
 
         if rtype == "assistant":
-            return self._transcribe_assistant(record)
+            result = self._transcribe_assistant(record)
         elif rtype == "user":
-            return self._transcribe_user(record)
+            result = self._transcribe_user(record)
+        else:
+            return None
 
-        return None
+        if result is not None and self._timestamps:
+            ts = record.get("timestamp", "")
+            if ts:
+                result = f"[{ts}] {result}"
+
+        return result
 
     def _transcribe_assistant(self, record: dict[str, Any]) -> str | None:
         """Transcribe an assistant message."""
@@ -281,9 +289,9 @@ class Transcriber:
         return "\n".join(result)
 
 
-def transcribe_file(path: str) -> str:
+def transcribe_file(path: str, timestamps: bool = False) -> str:
     """Transcribe all records in a JSONL file."""
-    transcriber = Transcriber()
+    transcriber = Transcriber(timestamps=timestamps)
     parts = []
 
     with open(path) as f:
@@ -324,12 +332,17 @@ def main():
         action="store_true",
         help="Stream output immediately (for live transcription)",
     )
+    parser.add_argument(
+        "-t", "--timestamps",
+        action="store_true",
+        help="Include timestamps before each message",
+    )
 
     args = parser.parse_args()
 
     # Streaming mode: print immediately as lines come in
     if args.stream or (not args.file and not args.output):
-        transcriber = Transcriber()
+        transcriber = Transcriber(timestamps=args.timestamps)
         first_output = True
         for line in sys.stdin:
             line = line.strip()
@@ -349,10 +362,10 @@ def main():
 
     # Batch mode: collect all then output
     if args.file:
-        result = transcribe_file(args.file)
+        result = transcribe_file(args.file, timestamps=args.timestamps)
     else:
         # Read from stdin
-        transcriber = Transcriber()
+        transcriber = Transcriber(timestamps=args.timestamps)
         parts = []
         for line in sys.stdin:
             line = line.strip()
