@@ -218,7 +218,7 @@ class Transcriber:
         if not input_data:
             return ""
 
-        max_value_len = 500
+        max_value_len = 200
         lines = []
         for key, value in input_data.items():
             if isinstance(value, str):
@@ -254,7 +254,7 @@ class Transcriber:
         lines = content.split("\n")
 
         max_lines = 5
-        max_line_len = 500
+        max_line_len = 200
         truncated_lines = lines[:max_lines]
 
         result_lines = []
