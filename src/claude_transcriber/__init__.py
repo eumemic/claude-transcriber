@@ -197,23 +197,37 @@ class Transcriber:
         name = tool.get("name", "Unknown")
         input_data = tool.get("input", {})
 
-        # Format args summary
         args_str = self._format_tool_args(name, input_data)
 
-        if args_str:
-            return f"⏺ {name}({args_str})"
-        return f"⏺ {name}"
+        if not args_str:
+            return f"⏺ {name}"
+
+        if len(input_data) == 1:
+            return f"⏺ {name}(\n{args_str}\n  )"
+
+        return f"⏺ {name}(\n{args_str}\n  )"
 
     def _format_tool_args(self, name: str, input_data: dict[str, Any]) -> str:
-        """Format tool input as abbreviated args string."""
+        """Format tool input as key=value lines, one per argument."""
         if not input_data:
             return ""
 
-        serialized = json.dumps(input_data, default=str)
-        max_len = 200
-        if len(serialized) > max_len:
-            return serialized[:max_len] + "…"
-        return serialized
+        max_value_len = 500
+        lines = []
+        for key, value in input_data.items():
+            if isinstance(value, str):
+                serialized = value
+                if len(serialized) > max_value_len:
+                    serialized = serialized[:max_value_len] + "…"
+                formatted = f'    {key}="{serialized}"'
+            else:
+                serialized = json.dumps(value, default=str)
+                if len(serialized) > max_value_len:
+                    serialized = serialized[:max_value_len] + "…"
+                formatted = f"    {key}={serialized}"
+            lines.append(formatted)
+
+        return "\n".join(lines)
 
     def _format_tool_result(self, block: dict[str, Any]) -> str:
         """Format a tool result block."""
