@@ -15,7 +15,7 @@ __all__ = ["Transcriber", "transcribe_file", "main"]
 class Transcriber:
     """Transcribes Claude Code log records to human-readable format."""
 
-    def __init__(self, timestamps: bool = False):
+    def __init__(self, timestamps: bool = True):
         self._pending_tool_use: dict | None = None
         self._timestamps = timestamps
 
@@ -289,7 +289,7 @@ class Transcriber:
         return "\n".join(result)
 
 
-def transcribe_file(path: str, timestamps: bool = False) -> str:
+def transcribe_file(path: str, timestamps: bool = True) -> str:
     """Transcribe all records in a JSONL file."""
     transcriber = Transcriber(timestamps=timestamps)
     parts = []
