@@ -52,7 +52,6 @@ class Transcriber:
 
         parts = []
         text_parts = []
-        tool_uses = []
 
         for block in content:
             if not isinstance(block, dict):
@@ -60,27 +59,34 @@ class Transcriber:
 
             btype = block.get("type")
 
-            if btype == "text":
+            if btype == "thinking":
+                thinking = block.get("thinking", "").strip()
+                if thinking:
+                    indented = self._indent_text(thinking, first_prefix="  💭 ", cont_prefix="     ")
+                    parts.append(indented)
+
+            elif btype == "text":
                 text = block.get("text", "").strip()
                 if text:
                     text_parts.append(text)
 
             elif btype == "tool_use":
-                tool_uses.append(block)
+                # Flush accumulated text before tool use
+                if text_parts:
+                    combined_text = "\n\n".join(text_parts)
+                    indented = self._indent_text(combined_text, first_prefix="⏺ ", cont_prefix="  ")
+                    parts.append(indented)
+                    text_parts = []
 
-        # Render text
+                tool_str = self._format_tool_use(block)
+                parts.append(tool_str)
+                self._pending_tool_use = block
+
+        # Flush any remaining text
         if text_parts:
             combined_text = "\n\n".join(text_parts)
-            # Indent continuation lines for multi-line text
             indented = self._indent_text(combined_text, first_prefix="⏺ ", cont_prefix="  ")
             parts.append(indented)
-
-        # Render tool uses
-        for tool in tool_uses:
-            tool_str = self._format_tool_use(tool)
-            parts.append(tool_str)
-            # Store for potential tool result in next user message
-            self._pending_tool_use = tool
 
         if not parts:
             return None
