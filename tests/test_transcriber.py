@@ -85,3 +85,45 @@ def test_transcribe_fixture(case_name: str):
             f"User message count mismatch: expected ~{expected_user}, "
             f"got {actual_user}"
         )
+
+
+class TestCleanUserText:
+    """Tests for system noise stripping in _clean_user_text."""
+
+    def test_strips_system_reminder(self):
+        t = Transcriber()
+        text = (
+            '<system-reminder>\nContents of MEMORY.md...\n'
+            '</system-reminder>\nHello, how are you?'
+        )
+        assert t._clean_user_text(text) == "Hello, how are you?"
+
+    def test_strips_multiple_system_reminders(self):
+        t = Transcriber()
+        text = (
+            '<system-reminder>\nfirst\n</system-reminder>'
+            'actual message'
+            '<system-reminder>\nsecond\n</system-reminder>'
+        )
+        assert t._clean_user_text(text) == "actual message"
+
+    def test_returns_empty_for_only_system_reminder(self):
+        t = Transcriber()
+        text = '<system-reminder>\nJust system stuff\n</system-reminder>'
+        assert t._clean_user_text(text) == ""
+
+    def test_system_reminder_not_indexed_as_user_message(self):
+        """A user record that is entirely system-reminders produces None."""
+        t = Transcriber()
+        record = {
+            "type": "user",
+            "timestamp": "2026-02-20T07:07:37.291Z",
+            "message": {
+                "content": (
+                    "<system-reminder>\n"
+                    "Contents of MEMORY.md: lots of stuff...\n"
+                    "</system-reminder>"
+                ),
+            },
+        }
+        assert t.transcribe(record) is None

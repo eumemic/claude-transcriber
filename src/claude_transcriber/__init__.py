@@ -70,7 +70,9 @@ class Transcriber:
             if btype == "thinking":
                 thinking = block.get("thinking", "").strip()
                 if thinking:
-                    indented = self._indent_text(thinking, first_prefix="  💭 ", cont_prefix="     ")
+                    indented = self._indent_text(
+                        thinking, first_prefix="  💭 ", cont_prefix="     "
+                    )
                     parts.append(indented)
 
             elif btype == "text":
@@ -149,6 +151,16 @@ class Transcriber:
 
         # Skip system context blocks
         if text.startswith("## Context"):
+            return ""
+
+        # Strip system-reminder blocks (MEMORY.md injections, hook output, etc.)
+        text = re.sub(
+            r"<system-reminder>\s*.*?\s*</system-reminder>",
+            "",
+            text,
+            flags=re.DOTALL,
+        ).strip()
+        if not text:
             return ""
 
         # Check for command XML and extract command
