@@ -15,9 +15,16 @@ __all__ = ["Transcriber", "transcribe_file", "main"]
 class Transcriber:
     """Transcribes Claude Code log records to human-readable format."""
 
-    def __init__(self, timestamps: bool = True):
+    def __init__(
+        self,
+        timestamps: bool = True,
+        include_thinking: bool = True,
+        tool_arg_limits: dict[str, int | None] | None = None,
+    ):
         self._pending_tool_use: dict | None = None
         self._timestamps = timestamps
+        self._include_thinking = include_thinking
+        self._tool_arg_limits = tool_arg_limits
 
     def transcribe(self, record: dict[str, Any]) -> str | None:
         """Transcribe a single record.
@@ -68,6 +75,8 @@ class Transcriber:
             btype = block.get("type")
 
             if btype == "thinking":
+                if not self._include_thinking:
+                    continue
                 thinking = block.get("thinking", "").strip()
                 if thinking:
                     indented = self._indent_text(
@@ -238,17 +247,21 @@ class Transcriber:
         if not input_data:
             return ""
 
-        max_value_len = 200
+        # Per-tool override (None = no limit), then default 200
+        max_value_len: int | None = 200
+        if self._tool_arg_limits and name in self._tool_arg_limits:
+            max_value_len = self._tool_arg_limits[name]
+
         lines = []
         for key, value in input_data.items():
             if isinstance(value, str):
                 serialized = value
-                if len(serialized) > max_value_len:
+                if max_value_len is not None and len(serialized) > max_value_len:
                     serialized = serialized[:max_value_len] + "…"
                 formatted = f'    {key}="{serialized}"'
             else:
                 serialized = json.dumps(value, default=str)
-                if len(serialized) > max_value_len:
+                if max_value_len is not None and len(serialized) > max_value_len:
                     serialized = serialized[:max_value_len] + "…"
                 formatted = f"    {key}={serialized}"
             lines.append(formatted)

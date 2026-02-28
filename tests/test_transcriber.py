@@ -8,7 +8,6 @@ import pytest
 
 from claude_transcriber import Transcriber
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -127,3 +126,93 @@ class TestCleanUserText:
             },
         }
         assert t.transcribe(record) is None
+
+
+class TestIncludeThinking:
+    """Tests for the include_thinking option."""
+
+    def _make_assistant_record(self, blocks):
+        return {
+            "type": "assistant",
+            "message": {"content": blocks},
+        }
+
+    def test_thinking_included_by_default(self):
+        t = Transcriber(timestamps=False)
+        record = self._make_assistant_record([
+            {"type": "thinking", "thinking": "Let me reason about this..."},
+            {"type": "text", "text": "Here is my answer."},
+        ])
+        result = t.transcribe(record)
+        assert "💭" in result
+        assert "Let me reason about this..." in result
+        assert "Here is my answer." in result
+
+    def test_thinking_excluded_when_disabled(self):
+        t = Transcriber(timestamps=False, include_thinking=False)
+        record = self._make_assistant_record([
+            {"type": "thinking", "thinking": "Let me reason about this..."},
+            {"type": "text", "text": "Here is my answer."},
+        ])
+        result = t.transcribe(record)
+        assert "💭" not in result
+        assert "Let me reason" not in result
+        assert "Here is my answer." in result
+
+    def test_thinking_only_message_returns_none_when_disabled(self):
+        t = Transcriber(timestamps=False, include_thinking=False)
+        record = self._make_assistant_record([
+            {"type": "thinking", "thinking": "Just internal reasoning..."},
+        ])
+        result = t.transcribe(record)
+        assert result is None
+
+
+class TestToolArgLimits:
+    """Tests for the tool_arg_limits option."""
+
+    def _make_tool_use_record(self, tool_name, args):
+        return {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "name": tool_name, "input": args},
+            ]},
+        }
+
+    def test_default_truncation(self):
+        """By default, args longer than 200 chars are truncated."""
+        t = Transcriber(timestamps=False)
+        long_msg = "x" * 300
+        record = self._make_tool_use_record("Send", {"message": long_msg})
+        result = t.transcribe(record)
+        assert "…" in result
+        assert long_msg not in result
+
+    def test_no_limit_for_specified_tool(self):
+        """tool_arg_limits={\"Send\": None} removes truncation for Send."""
+        t = Transcriber(timestamps=False, tool_arg_limits={"Send": None})
+        long_msg = "x" * 300
+        record = self._make_tool_use_record("Send", {"message": long_msg})
+        result = t.transcribe(record)
+        assert long_msg in result
+        assert "…" not in result
+
+    def test_other_tools_still_truncated(self):
+        """Tools not in tool_arg_limits still use the default 200 limit."""
+        t = Transcriber(timestamps=False, tool_arg_limits={"Send": None})
+        long_arg = "y" * 300
+        record = self._make_tool_use_record("Bash", {"command": long_arg})
+        result = t.transcribe(record)
+        assert "…" in result
+        assert long_arg not in result
+
+    def test_custom_limit_for_tool(self):
+        """A numeric limit truncates at that length."""
+        t = Transcriber(timestamps=False, tool_arg_limits={"Bash": 50})
+        long_arg = "z" * 100
+        record = self._make_tool_use_record("Bash", {"command": long_arg})
+        result = t.transcribe(record)
+        assert "…" in result
+        # Should contain first 50 chars but not the full 100
+        assert "z" * 50 in result
+        assert long_arg not in result
